@@ -148,7 +148,17 @@
           document.getElementById('userInput').value = converted;
           output.textContent = `你說的是：「${converted}」`;
         } catch (e) {
-          document.getElementById('userInput').value = transcript;
+          const numericOnly = transcript.replace(/[, ]/g, '');
+const number = Number(numericOnly);
+const isOnlyDigits = /^[0-9]+$/.test(numericOnly);
+if (isOnlyDigits && !isNaN(number)) {
+  const converted = numberToWords(number);
+  document.getElementById('userInput').value = converted;
+  output.textContent = `你說的是：「${converted}」`;
+} else {
+  document.getElementById('userInput').value = transcript;
+  output.textContent = `你說的是：「${transcript}」`;
+}
           output.textContent = `你說的是：「${transcript}」`;
         }
         output.textContent = `你說的是：「${transcript}」`;
