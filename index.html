@@ -1,98 +1,237 @@
+
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>數字中翻英練習</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 </head>
 <body>
   <h1>數字中翻英練習</h1>
-  <button onclick="playAudio()">🔊 播放英文語音</button>
-  <button id="speechBtn" onclick="startSpeechRecognition()">🎤 語音輸入</button>
-  <button id="stopBtn" onclick="stopSpeechRecognition()" style="display:none;">🛑 停止錄音</button>
-  <p id="speechOutput"></p>
-  <audio id="userRecording" controls style="display:none;"></audio>
-  <a id="downloadLink" style="display:none;" download="recording.webm">⬇️ 下載你的發音錄音</a>
+  <label>最小位數：<input type="number" id="minDigits" value="2" min="1" max="10"></label>
+  <label>最大位數：<input type="number" id="maxDigits" value="5" min="1" max="10"></label>
+  <label style="margin-left: 1em;">錄音上限（秒）：<input type="number" id="recordLimit" value="10" min="1" max="60" style="width:60px;"></label>
+  <label style="margin-left: 1em;">切換題目方式：
+    <select id="autoNext">
+      <option value="true">自動跳下一題</option>
+      <option value="false">手動跳下一題</option>
+    </select>
+  </label>
+  <button onclick="generateQuestions()">產生練習題</button>
+
+  <div class="question" id="questionArea" style="display:none;">
+    <p id="currentNumber"></p>
+    <p id="chineseText"></p>
+    <button onclick="playAudio()">🔊 播放英文語音</button>
+    <button id="speechBtn" onclick="startSpeechRecognition()">🎤 語音輸入</button>
+    <button id="stopBtn" onclick="stopSpeechRecognition()" style="display:none;">🛑 停止錄音</button>
+    <p id="speechOutput"></p>
+    <label>輸入英文：<input type="text" id="userInput" style="font-size:1.5em;width:80%;"></label>
+    <button onclick="checkAnswer()">提交答案</button>
+    <p id="feedback"></p>
+    <p id="showCorrectAnswer" style="color: green;"></p>
+    <p id="timeTaken" style="color: gray;"></p>
+    <audio id="userRecording" controls style="display:none;"></audio>
+    <a id="downloadLink" style="display:none;" download="recording.webm">⬇️ 下載你的發音錄音</a>
+    <p id="pronunciationScore" style="color: blue;"></p>
+    <button id="nextBtn" onclick="nextQuestion()" style="display:none;">下一題</button>
+  </div>
+
+  <div id="summary" style="display:none;margin-top:2em;">
+    <h2>成績總結</h2>
+    <p id="scoreSummary"></p>
+    <h3>題目回顧</h3>
+    <table border="1" cellpadding="5" style="border-collapse:collapse;">
+      <thead>
+        <tr><th>題號</th><th>數字</th><th>正確答案</th><th>你的答案</th><th>是否正確</th><th>花費時間</th></tr>
+      </thead>
+      <tbody id="reviewTable"></tbody>
+    </table>
+  </div>
 
   <script>
-let naturalVoice = null;
-speechSynthesis.onvoiceschanged = () => {
-  const voices = speechSynthesis.getVoices();
-  naturalVoice = voices.find(v => /Google UK English Female|Microsoft Aria|en-US/i.test(v.name)) || voices[0];
-};
-
-function playAudio() {
-  const utter = new SpeechSynthesisUtterance("three million sixty-five thousand two hundred seventy-eight");
-  if (naturalVoice) utter.voice = naturalVoice;
-  speechSynthesis.speak(utter);
-}
-
-let recognition = null, mediaRecorder = null;
-
-function stopSpeechRecognition() {
-  if (recognition) recognition.abort();
-  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
-  document.getElementById('speechOutput').textContent = "⏹️ 已停止錄音";
-  document.getElementById('stopBtn').style.display = 'none';
-  document.getElementById('speechBtn').disabled = false;
-}
-
-function startSpeechRecognition() {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) {
-    alert("你的瀏覽器不支援語音辨識。");
-    return;
-  }
-  recognition = new SpeechRecognition();
-  recognition.lang = 'en-US';
-  recognition.interimResults = false;
-  recognition.maxAlternatives = 1;
-
-  const output = document.getElementById('speechOutput');
-  const btn = document.getElementById('speechBtn');
-  output.classList.add('listening');
-  output.textContent = "🎙️ 正在聆聽...";
-  btn.disabled = true;
-  document.getElementById('stopBtn').style.display = 'inline-block';
-
-  navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-    const audioChunks = [];
-    mediaRecorder = new MediaRecorder(stream);
-    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-    mediaRecorder.onstop = () => {
-      const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-      const audioUrl = URL.createObjectURL(audioBlob);
-      const audio = document.getElementById('userRecording');
-      audio.src = audioUrl;
-      audio.style.display = 'block';
-      const download = document.getElementById('downloadLink');
-      download.href = audioUrl;
-      download.style.display = 'inline';
-      download.download = `recording_${Date.now()}.webm`;
+    let naturalVoice = null;
+    speechSynthesis.onvoiceschanged = () => {
+      const voices = speechSynthesis.getVoices();
+      naturalVoice = voices.find(v => /Google UK English Female|Microsoft Aria|en-US/i.test(v.name)) || voices[0];
     };
-    mediaRecorder.start();
-    setTimeout(() => {
-      if (mediaRecorder && mediaRecorder.state === 'recording') {
-        mediaRecorder.stop();
+
+    let questions = [], current = 0, startTime = 0, history = [];
+    let recognition = null, mediaRecorder = null;
+
+    function numberToWords(num) {
+      const a = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+                "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
+      const b = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+      if (num === 0) return "zero";
+      if (num < 20) return a[num];
+      if (num < 100) return b[Math.floor(num / 10)] + (num % 10 ? "-" + a[num % 10] : "");
+      if (num < 1000) return a[Math.floor(num / 100)] + " hundred" + (num % 100 ? " " + numberToWords(num % 100) : "");
+      if (num < 1000000) return numberToWords(Math.floor(num / 1000)) + " thousand" + (num % 1000 ? " " + numberToWords(num % 1000) : "");
+      if (num < 1000000000) return numberToWords(Math.floor(num / 1000000)) + " million" + (num % 1000000 ? " " + numberToWords(num % 1000000) : "");
+      return "number too large";
+    }
+
+    function generateNumber(minDigits, maxDigits) {
+      let length = Math.floor(Math.random() * (maxDigits - minDigits + 1)) + minDigits;
+      let min = Math.pow(10, length - 1);
+      let max = Math.pow(10, length) - 1;
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    function numberToChinese(num) {
+      const digitMap = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+      return num.toString().split('').map(d => digitMap[d]).join('');
+    }
+
+    function generateQuestions() {
+      const min = parseInt(document.getElementById('minDigits').value);
+      const max = parseInt(document.getElementById('maxDigits').value);
+      const set = new Set();
+      while (set.size < 10) set.add(generateNumber(min, max));
+      questions = Array.from(set);
+      current = 0;
+      history = [];
+      document.getElementById('questionArea').style.display = 'block';
+      document.getElementById('summary').style.display = 'none';
+      nextQuestion();
+    }
+
+    function nextQuestion() {
+      if (current >= questions.length) return showResults();
+      document.getElementById('userInput').value = '';
+      document.getElementById('feedback').textContent = '';
+      document.getElementById('showCorrectAnswer').textContent = '';
+      document.getElementById('speechOutput').textContent = '';
+      document.getElementById('pronunciationScore').textContent = '';
+      document.getElementById('speechBtn').disabled = false;
+      document.getElementById('stopBtn').style.display = 'none';
+      document.getElementById('nextBtn').style.display = 'none';
+      document.getElementById('currentNumber').textContent = `數字：${questions[current]}`;
+      document.getElementById('chineseText').textContent = `中文：${numberToChinese(questions[current])}`;
+      document.getElementById('userRecording').style.display = 'none';
+      document.getElementById('downloadLink').style.display = 'none';
+      startTime = performance.now();
+      current++;
+    }
+
+    function playAudio() {
+      const index = current - 1 >= 0 ? current - 1 : 0;
+      const utter = new SpeechSynthesisUtterance(numberToWords(questions[index]));
+      if (naturalVoice) utter.voice = naturalVoice;
+      speechSynthesis.speak(utter);
+    }
+
+    function stopSpeechRecognition() {
+      if (recognition) recognition.abort();
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+      document.getElementById('speechOutput').textContent = "⏹️ 已停止錄音";
+      document.getElementById('speechBtn').disabled = false;
+      document.getElementById('stopBtn').style.display = 'none';
+    }
+
+    function startSpeechRecognition() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) return alert("瀏覽器不支援語音辨識。");
+      recognition = new SpeechRecognition();
+      recognition.lang = 'en-US';
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+
+      const output = document.getElementById('speechOutput');
+      const btn = document.getElementById('speechBtn');
+      btn.disabled = true;
+      document.getElementById('stopBtn').style.display = 'inline-block';
+
+      navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+        const audioChunks = [];
+        mediaRecorder = new MediaRecorder(stream);
+        mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(audioChunks, { type: 'audio/webm' });
+          const url = URL.createObjectURL(blob);
+          const audio = document.getElementById('userRecording');
+          audio.src = url;
+          audio.style.display = 'block';
+          const link = document.getElementById('downloadLink');
+          link.href = url;
+          link.style.display = 'inline';
+          link.download = `recording_${Date.now()}.webm`;
+        };
+        mediaRecorder.start();
+        setTimeout(() => {
+          if (mediaRecorder.state === 'recording') mediaRecorder.stop();
+        }, parseInt(document.getElementById('recordLimit').value) * 1000);
+        recognition.start();
+      });
+
+      recognition.onresult = function(event) {
+        const transcript = event.results[0][0].transcript;
+        document.getElementById('userInput').value = transcript;
+        output.textContent = `你說的是：「${transcript}」`;
+      };
+
+      recognition.onerror = function(event) {
+        output.textContent = "❌ 語音辨識錯誤: " + event.error;
+      };
+
+      recognition.onend = function() {
+        btn.disabled = false;
+        document.getElementById('stopBtn').style.display = 'none';
+      };
+    }
+
+    function checkAnswer() {
+      const input = document.getElementById('userInput').value.trim().toLowerCase();
+      const correct = numberToWords(questions[current - 1]).toLowerCase();
+      const correctDisplay = numberToWords(questions[current - 1]);
+      const timeSpent = ((performance.now() - startTime) / 1000).toFixed(2);
+      const isCorrect = input === correct;
+
+      document.getElementById('feedback').textContent = isCorrect ? '✅ 正確！' : '❌ 錯誤';
+      document.getElementById('showCorrectAnswer').textContent = `正確答案是：${correctDisplay}`;
+      document.getElementById('timeTaken').textContent = `⏱️ 花了 ${timeSpent} 秒`;
+      document.getElementById('pronunciationScore').textContent = `發音接近度評估：約 ${compareSimilarity(correct, input)}%`;
+
+      history.push({
+        number: questions[current - 1],
+        correctAnswer: correctDisplay,
+        yourAnswer: input,
+        result: isCorrect ? '正確' : '錯誤',
+        time: `${timeSpent} 秒`
+      });
+
+      const autoNext = document.getElementById('autoNext').value === 'true';
+      if (autoNext) {
+        setTimeout(() => nextQuestion(), 1500);
+      } else {
+        document.getElementById('nextBtn').style.display = 'inline-block';
       }
-    }, 10000); // default 10s
-    recognition.start();
-  });
+    }
 
-  recognition.onresult = function(event) {
-    const transcript = event.results[0][0].transcript;
-    output.textContent = `你說的是：「${transcript}」`;
-  };
+    function showResults() {
+      document.getElementById('summary').style.display = 'block';
+      let correctCount = history.filter(h => h.result === '正確').length;
+      document.getElementById('scoreSummary').textContent = `共 ${history.length} 題，正確 ${correctCount} 題，正確率 ${(correctCount / history.length * 100).toFixed(1)}%`;
+      const table = document.getElementById('reviewTable');
+      table.innerHTML = '';
+      history.forEach((h, i) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `<td>${i + 1}</td><td>${h.number}</td><td>${h.correctAnswer}</td><td>${h.yourAnswer}</td><td>${h.result}</td><td>${h.time}</td>`;
+        table.appendChild(row);
+      });
+    }
 
-  recognition.onerror = function(event) {
-    output.textContent = "❌ 語音辨識錯誤: " + event.error;
-  };
-
-  recognition.onend = function() {
-    output.classList.remove('listening');
-    btn.disabled = false;
-    document.getElementById('stopBtn').style.display = 'none';
-  };
-}
+    function compareSimilarity(a, b) {
+      const clean = str => str.toLowerCase().replace(/[^a-z]/g, '');
+      a = clean(a); b = clean(b);
+      let matches = 0;
+      const len = Math.max(a.length, b.length);
+      for (let i = 0; i < Math.min(a.length, b.length); i++) {
+        if (a[i] === b[i]) matches++;
+      }
+      return Math.round((matches / len) * 100);
+    }
   </script>
 </body>
 </html>
