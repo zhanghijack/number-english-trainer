@@ -49,6 +49,12 @@
   <label>最小位數：<input type="number" id="minDigits" value="2" min="1" max="10"></label>
   <label>最大位數：<input type="number" id="maxDigits" value="5" min="1" max="10"></label>
   <button onclick="generateQuestions()">產生練習題</button>
+  <label style="margin-left: 1em;">切換題目方式：
+    <select id="autoNext">
+      <option value="true">自動跳下一題</option>
+      <option value="false">手動跳下一題</option>
+    </select>
+  </label>
 
   <div class="question" id="questionArea" style="display: none;">
     <p id="currentNumber"></p>
@@ -59,6 +65,8 @@
     <label>輸入英文：<input type="text" id="userInput"></label>
     <button onclick="checkAnswer()">提交答案</button>
     <p class="result" id="feedback"></p>
+    <p id="timeTaken" style="color: gray;"></p>
+    <button id="nextBtn" onclick="nextQuestion()" style="display:none;">下一題</button>
   </div>
 
   <script>
@@ -84,6 +92,7 @@
 
     const questions = [];
     let current = 0;
+let startTime = 0;
     const history = [];
 
     function generateNumber(minDigits, maxDigits) {
@@ -110,6 +119,7 @@
       current = 0;
       history.length = 0;
       document.getElementById('questionArea').style.display = 'block';
+document.getElementById('timeTaken').textContent = '';
       nextQuestion();
     }
 
@@ -185,12 +195,22 @@ if (isOnlyDigits && !isNaN(number)) {
         yourAnswer: input,
         result: isCorrect ? '正確' : '錯誤'
       });
-      setTimeout(() => {
-        nextQuestion();
-      }, 1500);
+      const timeSpent = ((performance.now() - startTime) / 1000).toFixed(2);
+      document.getElementById('timeTaken').textContent = `⏱️ 花了 ${timeSpent} 秒`;
+      history[history.length - 1].time = `${timeSpent} 秒`;
+
+      const autoNext = document.getElementById('autoNext').value === 'true';
+      if (autoNext) {
+        setTimeout(() => {
+          nextQuestion();
+        }, 1500);
+      } else {
+        document.getElementById('nextBtn').style.display = 'inline-block';
+      }
     }
 
     function nextQuestion() {
+      document.getElementById('nextBtn').style.display = 'none';
       if (current >= questions.length) {
         showResults();
         return;
@@ -202,6 +222,7 @@ if (isOnlyDigits && !isNaN(number)) {
       document.getElementById('speechBtn').disabled = false;
       document.getElementById('currentNumber').textContent = `數字：${questions[current]}`;
       document.getElementById('chineseText').textContent = `中文：${numberToChinese(questions[current])}`;
+      startTime = performance.now();
       current++;
     }
 
