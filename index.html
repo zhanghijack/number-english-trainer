@@ -67,11 +67,13 @@
     <p class="result" id="feedback"></p>
     <p id="showCorrectAnswer" style="color: green;"></p>
     <p id="timeTaken" style="color: gray;"></p>
+    <audio id="userRecording" controls style="display:none; margin-top: 0.5em;"></audio>
     <button id="nextBtn" onclick="nextQuestion()" style="display:none;">下一題</button>
   </div>
 
   <div id="summary" style="display:none; margin-top: 2em;">
     <h2>成績總結</h2>
+    <button onclick="generateQuestions()">🔄 重新開始練習</button>
     <p id="scoreSummary"></p>
     <h3>題目回顧</h3>
     <table border="1" cellpadding="5" style="border-collapse: collapse;">
@@ -154,7 +156,9 @@
       speechSynthesis.speak(utter);
     }
 
-    function startSpeechRecognition() {
+    let mediaRecorder, audioChunks = [];
+
+function startSpeechRecognition() {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (!SpeechRecognition) {
         alert("你的瀏覽器不支援語音辨識。");
@@ -171,7 +175,20 @@
       output.textContent = "🎙️ 正在聆聽...";
       btn.disabled = true;
 
-      recognition.start();
+      navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+        audioChunks = [];
+        mediaRecorder = new MediaRecorder(stream);
+        mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+        mediaRecorder.onstop = () => {
+          const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+          const audioUrl = URL.createObjectURL(audioBlob);
+          const audio = document.getElementById('userRecording');
+          audio.src = audioUrl;
+          audio.style.display = 'block';
+        };
+        mediaRecorder.start();
+        recognition.start();
+      });
 
       recognition.onresult = function(event) {
         const transcript = event.results[0][0].transcript;
@@ -193,6 +210,7 @@
       };
 
       recognition.onend = function() {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
         output.classList.remove('listening');
         btn.disabled = false;
       };
