@@ -44,6 +44,158 @@
   </style>
 </head>
 <body>
-<!-- content intentionally trimmed to fit here -->
+  <h1>數字中翻英練習</h1>
+
+  <label>最小位數：<input type="number" id="minDigits" value="2" min="1" max="10"></label>
+  <label>最大位數：<input type="number" id="maxDigits" value="5" min="1" max="10"></label>
+  <button onclick="generateQuestions()">產生練習題</button>
+
+  <div class="question" id="questionArea" style="display: none;">
+    <p id="currentNumber"></p>
+    <p id="chineseText"></p>
+    <button id="playAudioButton" onclick="playAudio()">🔊 播放英文語音</button>
+    <button id="speechBtn" onclick="startSpeechRecognition()">🎤 語音輸入</button>
+    <p id="speechOutput"></p>
+    <label>輸入英文：<input type="text" id="userInput"></label>
+    <button onclick="checkAnswer()">提交答案</button>
+    <p class="result" id="feedback"></p>
+  </div>
+
+  <script>
+    if (navigator.permissions) {
+      navigator.permissions.query({ name: 'microphone' }).then(function(result) {
+        if (result.state === 'denied') {
+          alert('❗ 請到瀏覽器設定中允許本頁使用麥克風，否則語音辨識將無法啟動');
+        }
+      });
+    }
+
+    function numberToWords(num) {
+      const a = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+                 "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
+      const b = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+      if (num === 0) return "zero";
+      if (num < 20) return a[num];
+      if (num < 100) return b[Math.floor(num / 10)] + (num % 10 ? "-" + a[num % 10] : "");
+      if (num < 1000) return a[Math.floor(num / 100)] + " hundred" + (num % 100 ? " " + numberToWords(num % 100) : "");
+      if (num < 1000000) return numberToWords(Math.floor(num / 1000)) + " thousand" + (num % 1000 ? " " + numberToWords(num % 1000) : "");
+      return "too large";
+    }
+
+    const questions = [];
+    let current = 0;
+    const history = [];
+
+    function generateNumber(minDigits, maxDigits) {
+      let length = Math.floor(Math.random() * (maxDigits - minDigits + 1)) + minDigits;
+      let min = Math.pow(10, length - 1);
+      let max = Math.pow(10, length) - 1;
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    function numberToChinese(num) {
+      const digitMap = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+      return num.toString().split('').map(d => digitMap[d]).join('');
+    }
+
+    function generateQuestions() {
+      const min = parseInt(document.getElementById('minDigits').value);
+      const max = parseInt(document.getElementById('maxDigits').value);
+      const set = new Set();
+      while (set.size < 10) {
+        set.add(generateNumber(min, max));
+      }
+      questions.length = 0;
+      questions.push(...Array.from(set));
+      current = 0;
+      history.length = 0;
+      document.getElementById('questionArea').style.display = 'block';
+      nextQuestion();
+    }
+
+    function playAudio() {
+      const numberIndex = current - 1 >= 0 ? current - 1 : 0;
+      const text = numberToWords(questions[numberIndex]);
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = 'en-US';
+      speechSynthesis.speak(utter);
+    }
+
+    function startSpeechRecognition() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        alert("你的瀏覽器不支援語音辨識。");
+        return;
+      }
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'en-US';
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+
+      const output = document.getElementById('speechOutput');
+      const btn = document.getElementById('speechBtn');
+      output.classList.add('listening');
+      output.textContent = "🎙️ 正在聆聽...";
+      btn.disabled = true;
+
+      recognition.start();
+
+      recognition.onresult = function(event) {
+        const transcript = event.results[0][0].transcript;
+        document.getElementById('userInput').value = transcript;
+        output.textContent = `你說的是：「${transcript}」`;
+      };
+
+      recognition.onerror = function(event) {
+        output.textContent = "❌ 語音辨識錯誤: " + event.error;
+      };
+
+      recognition.onend = function() {
+        output.classList.remove('listening');
+        btn.disabled = false;
+      };
+    }
+
+    function checkAnswer() {
+      const input = document.getElementById('userInput').value.trim().toLowerCase();
+      const correct = numberToWords(questions[current - 1]).toLowerCase();
+      const isCorrect = input === correct;
+      document.getElementById('feedback').textContent = isCorrect ? '✅ 正確！' : `❌ 錯誤，正解是：${correct}`;
+      history.push({
+        number: questions[current - 1],
+        correctAnswer: correct,
+        yourAnswer: input,
+        result: isCorrect ? '正確' : '錯誤'
+      });
+      setTimeout(() => {
+        nextQuestion();
+      }, 1500);
+    }
+
+    function nextQuestion() {
+      if (current >= questions.length) {
+        showResults();
+        return;
+      }
+      document.getElementById('userInput').value = '';
+      document.getElementById('feedback').textContent = '';
+      document.getElementById('speechOutput').textContent = '';
+      document.getElementById('speechOutput').classList.remove('listening');
+      document.getElementById('speechBtn').disabled = false;
+      document.getElementById('currentNumber').textContent = `數字：${questions[current]}`;
+      document.getElementById('chineseText').textContent = `中文：${numberToChinese(questions[current])}`;
+      current++;
+    }
+
+    function showResults() {
+      const blob = new Blob([JSON.stringify(history, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'answer_history.json';
+      a.textContent = '下載答題紀錄 (JSON)';
+      document.body.appendChild(a);
+    }
+  </script>
 </body>
 </html>
