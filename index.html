@@ -49,6 +49,7 @@
   <label>最小位數：<input type="number" id="minDigits" value="2" min="1" max="10"></label>
   <label>最大位數：<input type="number" id="maxDigits" value="5" min="1" max="10"></label>
   <button onclick="generateQuestions()">產生練習題</button>
+  <label style="margin-left: 1em;">錄音上限（秒）：<input type="number" id="recordLimit" value="10" min="1" max="60" style="width:60px;"></label>
   <label style="margin-left: 1em;">切換題目方式：
     <select id="autoNext">
       <option value="true">自動跳下一題</option>
@@ -101,7 +102,8 @@
       if (num < 100) return b[Math.floor(num / 10)] + (num % 10 ? "-" + a[num % 10] : "");
       if (num < 1000) return a[Math.floor(num / 100)] + " hundred" + (num % 100 ? " " + numberToWords(num % 100) : "");
       if (num < 1000000) return numberToWords(Math.floor(num / 1000)) + " thousand" + (num % 1000 ? " " + numberToWords(num % 1000) : "");
-      return "too large";
+      if (num < 1000000000) return numberToWords(Math.floor(num / 1000000)) + " million" + (num % 1000000 ? " " + numberToWords(num % 1000000) : "");
+  return "number too large";
     }
 
     function generateNumber(minDigits, maxDigits) {
@@ -155,7 +157,10 @@
       const text = numberToWords(questions[numberIndex]);
       const utter = new SpeechSynthesisUtterance(text);
       utter.lang = 'en-US';
-      speechSynthesis.speak(utter);
+      const voices = speechSynthesis.getVoices();
+  const naturalVoice = voices.find(v => /Google UK English Female|Microsoft Aria|en-US/i.test(v.name)) || voices[0];
+  if (naturalVoice) utter.voice = naturalVoice;
+  speechSynthesis.speak(utter);
     }
 
     let mediaRecorder, audioChunks = [];
@@ -198,7 +203,7 @@ function startSpeechRecognition() {
     if (mediaRecorder && mediaRecorder.state === 'recording') {
       mediaRecorder.stop();
     }
-  }, 10000);  // 最長10秒錄音
+  }, document.getElementById('recordLimit').value * 1000);
         recognition.start();
       });
 
