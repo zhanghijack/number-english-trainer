@@ -14,7 +14,7 @@
       border-radius: 10px;
       box-shadow: 0 0 10px rgba(0,0,0,0.1);
     }
-    input, button {
+    input, button, select {
       padding: 0.5em;
       margin: 0.5em 0;
       font-size: 1em;
@@ -62,25 +62,35 @@
     <button id="playAudioButton" onclick="playAudio()">🔊 播放英文語音</button>
     <button id="speechBtn" onclick="startSpeechRecognition()">🎤 語音輸入</button>
     <p id="speechOutput"></p>
-    <label>輸入英文：<input type="text" id="userInput"></label>
+    <label>輸入英文：<input type="text" id="userInput" style="font-size: 2em; width: 80%;"></label>
     <button onclick="checkAnswer()">提交答案</button>
     <p class="result" id="feedback"></p>
+    <p id="showCorrectAnswer" style="color: green;"></p>
     <p id="timeTaken" style="color: gray;"></p>
     <button id="nextBtn" onclick="nextQuestion()" style="display:none;">下一題</button>
   </div>
 
+  <div id="summary" style="display:none; margin-top: 2em;">
+    <h2>成績總結</h2>
+    <p id="scoreSummary"></p>
+    <h3>題目回顧</h3>
+    <table border="1" cellpadding="5" style="border-collapse: collapse;">
+      <thead>
+        <tr><th>題號</th><th>數字</th><th>正確答案</th><th>你的答案</th><th>是否正確</th><th>花費時間</th></tr>
+      </thead>
+      <tbody id="reviewTable"></tbody>
+    </table>
+  </div>
+
   <script>
-    if (navigator.permissions) {
-      navigator.permissions.query({ name: 'microphone' }).then(function(result) {
-        if (result.state === 'denied') {
-          alert('❗ 請到瀏覽器設定中允許本頁使用麥克風，否則語音辨識將無法啟動');
-        }
-      });
-    }
+    let questions = [];
+    let current = 0;
+    let startTime = 0;
+    let history = [];
 
     function numberToWords(num) {
       const a = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
-                 "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
+                "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
       const b = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
       if (num === 0) return "zero";
       if (num < 20) return a[num];
@@ -89,11 +99,6 @@
       if (num < 1000000) return numberToWords(Math.floor(num / 1000)) + " thousand" + (num % 1000 ? " " + numberToWords(num % 1000) : "");
       return "too large";
     }
-
-    const questions = [];
-    let current = 0;
-let startTime = 0;
-    const history = [];
 
     function generateNumber(minDigits, maxDigits) {
       let length = Math.floor(Math.random() * (maxDigits - minDigits + 1)) + minDigits;
@@ -114,13 +119,31 @@ let startTime = 0;
       while (set.size < 10) {
         set.add(generateNumber(min, max));
       }
-      questions.length = 0;
-      questions.push(...Array.from(set));
+      questions = Array.from(set);
       current = 0;
-      history.length = 0;
+      history = [];
       document.getElementById('questionArea').style.display = 'block';
-document.getElementById('timeTaken').textContent = '';
+      document.getElementById('summary').style.display = 'none';
       nextQuestion();
+    }
+
+    function nextQuestion() {
+      document.getElementById('nextBtn').style.display = 'none';
+      if (current >= questions.length) {
+        showResults();
+        return;
+      }
+      document.getElementById('userInput').value = '';
+      document.getElementById('feedback').textContent = '';
+      document.getElementById('showCorrectAnswer').textContent = '';
+      document.getElementById('speechOutput').textContent = '';
+      document.getElementById('speechOutput').classList.remove('listening');
+      document.getElementById('speechBtn').disabled = false;
+      document.getElementById('currentNumber').textContent = `數字：${questions[current]}`;
+      document.getElementById('chineseText').textContent = `中文：${numberToChinese(questions[current])}`;
+      document.getElementById('timeTaken').textContent = '';
+      startTime = performance.now();
+      current++;
     }
 
     function playAudio() {
@@ -152,26 +175,17 @@ document.getElementById('timeTaken').textContent = '';
 
       recognition.onresult = function(event) {
         const transcript = event.results[0][0].transcript;
-        try {
-          const spokenNumber = parseInt(transcript.replace(/[^0-9]/g, ''));
-          const converted = isNaN(spokenNumber) ? transcript : numberToWords(spokenNumber);
+        const numericOnly = transcript.replace(/[, ]/g, '');
+        const number = Number(numericOnly);
+        const isOnlyDigits = /^[0-9]+$/.test(numericOnly);
+        if (isOnlyDigits && !isNaN(number)) {
+          const converted = numberToWords(number);
           document.getElementById('userInput').value = converted;
           output.textContent = `你說的是：「${converted}」`;
-        } catch (e) {
-          const numericOnly = transcript.replace(/[, ]/g, '');
-const number = Number(numericOnly);
-const isOnlyDigits = /^[0-9]+$/.test(numericOnly);
-if (isOnlyDigits && !isNaN(number)) {
-  const converted = numberToWords(number);
-  document.getElementById('userInput').value = converted;
-  output.textContent = `你說的是：「${converted}」`;
-} else {
-  document.getElementById('userInput').value = transcript;
-  output.textContent = `你說的是：「${transcript}」`;
-}
+        } else {
+          document.getElementById('userInput').value = transcript;
           output.textContent = `你說的是：「${transcript}」`;
         }
-        output.textContent = `你說的是：「${transcript}」`;
       };
 
       recognition.onerror = function(event) {
@@ -188,16 +202,17 @@ if (isOnlyDigits && !isNaN(number)) {
       const input = document.getElementById('userInput').value.trim().toLowerCase();
       const correct = numberToWords(questions[current - 1]).toLowerCase();
       const isCorrect = input === correct;
-      document.getElementById('feedback').textContent = isCorrect ? '✅ 正確！' : `❌ 錯誤，正解是：${correct}`;
+      document.getElementById('feedback').textContent = isCorrect ? '✅ 正確！' : '❌ 錯誤';
+      document.getElementById('showCorrectAnswer').textContent = `正確答案是：${correct}`;
+      const timeSpent = ((performance.now() - startTime) / 1000).toFixed(2);
+      document.getElementById('timeTaken').textContent = `⏱️ 花了 ${timeSpent} 秒`;
       history.push({
         number: questions[current - 1],
         correctAnswer: correct,
         yourAnswer: input,
-        result: isCorrect ? '正確' : '錯誤'
+        result: isCorrect ? '正確' : '錯誤',
+        time: `${timeSpent} 秒`
       });
-      const timeSpent = ((performance.now() - startTime) / 1000).toFixed(2);
-      document.getElementById('timeTaken').textContent = `⏱️ 花了 ${timeSpent} 秒`;
-      history[history.length - 1].time = `${timeSpent} 秒`;
 
       const autoNext = document.getElementById('autoNext').value === 'true';
       if (autoNext) {
@@ -209,31 +224,18 @@ if (isOnlyDigits && !isNaN(number)) {
       }
     }
 
-    function nextQuestion() {
-      document.getElementById('nextBtn').style.display = 'none';
-      if (current >= questions.length) {
-        showResults();
-        return;
-      }
-      document.getElementById('userInput').value = '';
-      document.getElementById('feedback').textContent = '';
-      document.getElementById('speechOutput').textContent = '';
-      document.getElementById('speechOutput').classList.remove('listening');
-      document.getElementById('speechBtn').disabled = false;
-      document.getElementById('currentNumber').textContent = `數字：${questions[current]}`;
-      document.getElementById('chineseText').textContent = `中文：${numberToChinese(questions[current])}`;
-      startTime = performance.now();
-      current++;
-    }
-
     function showResults() {
-      const blob = new Blob([JSON.stringify(history, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'answer_history.json';
-      a.textContent = '下載答題紀錄 (JSON)';
-      document.body.appendChild(a);
+      document.getElementById('summary').style.display = 'block';
+      let correctCount = history.filter(h => h.result === '正確').length;
+      document.getElementById('scoreSummary').textContent = `共 ${history.length} 題，正確 ${correctCount} 題，正確率：${(correctCount / history.length * 100).toFixed(1)}%`;
+
+      const table = document.getElementById('reviewTable');
+      table.innerHTML = '';
+      history.forEach((h, i) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `<td>${i + 1}</td><td>${h.number}</td><td>${h.correctAnswer}</td><td>${h.yourAnswer}</td><td>${h.result}</td><td>${h.time || '-'}</td>`;
+        table.appendChild(row);
+      });
     }
   </script>
 </body>
