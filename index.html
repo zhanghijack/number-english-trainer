@@ -68,6 +68,8 @@
     <p id="showCorrectAnswer" style="color: green;"></p>
     <p id="timeTaken" style="color: gray;"></p>
     <audio id="userRecording" controls style="display:none; margin-top: 0.5em;"></audio>
+    <a id="downloadLink" style="display:none;" download="recording.webm">⬇️ 下載你的發音錄音</a>
+    <p id="pronunciationScore" style="color: blue;"></p>
     <button id="nextBtn" onclick="nextQuestion()" style="display:none;">下一題</button>
   </div>
 
@@ -185,8 +187,18 @@ function startSpeechRecognition() {
           const audio = document.getElementById('userRecording');
           audio.src = audioUrl;
           audio.style.display = 'block';
+  const download = document.getElementById('downloadLink');
+  download.href = audioUrl;
+  download.style.display = 'inline';
+  const filename = `recording_${Date.now()}.webm`;
+  download.download = filename;
         };
         mediaRecorder.start();
+  setTimeout(() => {
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+      mediaRecorder.stop();
+    }
+  }, 10000);  // 最長10秒錄音
         recognition.start();
       });
 
@@ -221,6 +233,8 @@ function startSpeechRecognition() {
       const correct = numberToWords(questions[current - 1]).toLowerCase();
       const isCorrect = input === correct;
       document.getElementById('feedback').textContent = isCorrect ? '✅ 正確！' : '❌ 錯誤';
+      const similarity = compareSimilarity(correct, input);
+      document.getElementById('pronunciationScore').textContent = `發音接近度評估：約 ${similarity}%`;
       document.getElementById('showCorrectAnswer').textContent = `正確答案是：${correct}`;
       const timeSpent = ((performance.now() - startTime) / 1000).toFixed(2);
       document.getElementById('timeTaken').textContent = `⏱️ 花了 ${timeSpent} 秒`;
@@ -255,6 +269,17 @@ function startSpeechRecognition() {
         table.appendChild(row);
       });
     }
-  </script>
+  
+function compareSimilarity(a, b) {
+  const clean = str => str.toLowerCase().replace(/[^a-z]/g, '');
+  a = clean(a); b = clean(b);
+  let matches = 0;
+  const len = Math.max(a.length, b.length);
+  for (let i = 0; i < Math.min(a.length, b.length); i++) {
+    if (a[i] === b[i]) matches++;
+  }
+  return Math.round((matches / len) * 100);
+}
+</script>
 </body>
 </html>
