@@ -142,7 +142,15 @@
 
       recognition.onresult = function(event) {
         const transcript = event.results[0][0].transcript;
-        document.getElementById('userInput').value = transcript;
+        try {
+          const spokenNumber = parseInt(transcript.replace(/[^0-9]/g, ''));
+          const converted = isNaN(spokenNumber) ? transcript : numberToWords(spokenNumber);
+          document.getElementById('userInput').value = converted;
+          output.textContent = `你說的是：「${converted}」`;
+        } catch (e) {
+          document.getElementById('userInput').value = transcript;
+          output.textContent = `你說的是：「${transcript}」`;
+        }
         output.textContent = `你說的是：「${transcript}」`;
       };
 
